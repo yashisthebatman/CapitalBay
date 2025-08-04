@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Startup Analytics - CapitalBay</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body id="page-analytics">
+
+    <header>
+        <h1>CapitalBay</h1>
+        <p>Connecting Innovators and Investors</p>
+    </header>
+
+     <nav>
+        <a href="index.html">Browse Startups</a>
+        <!-- Startup specific links -->
+        <span id="startup-links" style="display: none;">
+             <a href="my-startup.html">Update Profile</a>
+             <a href="analytics.html">Analytics</a>
+        </span>
+        <span id="investor-links" style="display: none;"></span>
+        <span id="public-links" style="display: none;">
+            <a href="login.html">Login</a>
+            <a href="register.html">Register</a>
+        </span>
+        <span id="user-links" style="display: none;"></span>
+    </nav>
+
+    <main class="initially-hidden">
+        <h2>Startup Analytics</h2>
+
+         <!-- Section for the Investor Interest Table -->
+         <section id="investor-analytics-section" class="detail-section">
+             <h3>Interested Investors</h3>
+             <p>Investors who have expressed interest in connecting with your startup.</p>
+             <div id="analytics-message-area"></div> <!-- For loading/error messages -->
+             <!-- Using financial-history-display class -->
+             <div class="table-responsive financial-history-display">
+                 <table> <!-- Removed class from table itself, apply to wrapper -->
+                     <thead>
+                         <tr>
+                             <th>Investor Name</th>
+                             <th>Contact Email</th>
+                         </tr>
+                     </thead>
+                     <tbody id="analytics-investor-table-body">
+                         <tr><td colspan="2" class="text-center loading">Loading investor data...</td></tr>
+                     </tbody>
+                 </table>
+             </div>
+         </section>
+
+    </main>
+
+    <footer>
+        <p>© 2024 CapitalBay. All rights reserved.</p>
+    </footer>
+
+    <script src="js/script.js"></script>
+</body>
+</html>
