@@ -11,7 +11,7 @@ import aiosqlite
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -214,7 +214,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:5500", "null"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://127.0.0.1:5500", "null"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -230,14 +230,42 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.datetime.utcnow() + expires_delta
+        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
     else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+        expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))):
+    """Get current user without raising an error if not authenticated"""
+    if not credentials:
+        return None
+    
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    
+    async with aiosqlite.connect(DATABASE) as db:
+        async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+    
+    if user is None:
+        return None
+    
+    return {
+        "id": user[0],
+        "email": user[1],
+        "user_type": user[3],
+        "name": user[4]
+    }
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user with authentication required"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -506,7 +534,7 @@ async def get_startups():
     return startups_with_risk
 
 @app.get("/api/startups/{startup_id}", response_model=StartupDetail)
-async def get_startup_details(startup_id: int, current_user: dict = Depends(get_current_user)):
+async def get_startup_details(startup_id: int, current_user: Optional[dict] = Depends(get_current_user_optional)):
     async with aiosqlite.connect(DATABASE) as db:
         async with db.execute("""
             SELECT s.*, u.name as founder_name, u.email as founder_email
@@ -545,9 +573,7 @@ async def get_startup_details(startup_id: int, current_user: dict = Depends(get_
     try:
         if startup_row[10]:
             financial_data = json.loads(startup_row[10])
-            startup_dict['financial_history'] = [
-                FinancialRecord(**item) for item in financial_data
-            ]
+            startup_dict['financial_history'] = financial_data  # Keep as dict for risk calculation
     except json.JSONDecodeError:
         startup_dict['financial_history'] = []
     
@@ -555,9 +581,19 @@ async def get_startup_details(startup_id: int, current_user: dict = Depends(get_
     startup_dict['risk_analysis'] = calculate_risk(startup_dict)
     startup_dict['calculated_valuation'] = calculate_valuation(startup_dict)
     
+    # Convert financial history to Pydantic models for response
+    try:
+        if startup_row[10]:
+            financial_data = json.loads(startup_row[10])
+            startup_dict['financial_history'] = [
+                FinancialRecord(**item) for item in financial_data
+            ]
+    except json.JSONDecodeError:
+        startup_dict['financial_history'] = []
+    
     # Check investor interest
     investor_has_expressed_interest = False
-    if current_user.get('user_type') == 'investor':
+    if current_user and current_user.get('user_type') == 'investor':
         async with aiosqlite.connect(DATABASE) as db:
             async with db.execute(
                 "SELECT 1 FROM investor_interest WHERE investor_user_id = ? AND startup_id = ?",
