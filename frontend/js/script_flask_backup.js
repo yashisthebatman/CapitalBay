@@ -1,43 +1,16 @@
-// frontend/js/script.js - Updated for FastAPI with JWT authentication
-const API_BASE_URL = 'http://127.0.0.1:5000/api'; // FastAPI backend URL
+// frontend/js/script.js
+const API_BASE_URL = 'http://127.0.0.1:5000/api'; // Your Flask backend URL
 
-// JWT Token Management
-const TOKEN_KEY = 'capitalbay_token';
-
-function getToken() {
-    return localStorage.getItem(TOKEN_KEY);
-}
-
-function setToken(token) {
-    localStorage.setItem(TOKEN_KEY, token);
-}
-
-function removeToken() {
-    localStorage.removeItem(TOKEN_KEY);
-}
-
-// Updated API call function for JWT authentication
+// --- Utility Functions ---
+// ... (apiCall, formatCurrency, formatEquity, getQueryParam - keep these as they are) ...
 async function apiCall(endpoint, method = 'GET', body = null, requiresAuth = false) {
     const options = {
         method,
         headers: {
             'Content-Type': 'application/json',
         },
+        credentials: 'include', // Important for sending/receiving session cookies
     };
-
-    // Add JWT token to headers if available and auth required
-    if (requiresAuth) {
-        const token = getToken();
-        if (token) {
-            options.headers['Authorization'] = `Bearer ${token}`;
-        } else {
-            // No token available, redirect to login
-            if (window.location.pathname.endsWith('/login.html') === false) {
-                window.location.href = 'login.html';
-            }
-            return null;
-        }
-    }
 
     if (body) {
         options.body = JSON.stringify(body);
@@ -46,14 +19,12 @@ async function apiCall(endpoint, method = 'GET', body = null, requiresAuth = fal
     try {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
 
-        // Handle unauthorized or forbidden access
+        // Handle unauthorized or forbidden access specifically for auth-required routes
         if (requiresAuth && (response.status === 401 || response.status === 403)) {
             console.warn(`Auth required or forbidden for ${endpoint}. Status: ${response.status}`);
-            // Token might be invalid, remove it
-            removeToken();
             // Check if already on login page to prevent redirect loop
             if (window.location.pathname.endsWith('/login.html') === false) {
-                window.location.href = 'login.html'; // Redirect to login
+                 window.location.href = 'login.html'; // Redirect to login
             }
             return null; // Stop further processing
         }
@@ -62,18 +33,19 @@ async function apiCall(endpoint, method = 'GET', body = null, requiresAuth = fal
         const contentType = response.headers.get('content-type');
         let data;
         if (contentType && contentType.includes('application/json')) {
-            // Handle potential empty JSON response
+            // Handle potential empty JSON response (like on logout maybe)
             const text = await response.text();
             data = text ? JSON.parse(text) : {};
         } else {
             data = await response.text(); // Or handle other types like blob if needed
         }
 
+
         if (!response.ok) {
             // Log the error message from the API if available
-            const errorMessage = data?.detail || data?.error || (typeof data === 'string' ? data : response.statusText);
+            const errorMessage = data?.error || (typeof data === 'string' ? data : response.statusText);
             console.error(`API Error (${response.status}) on ${method} ${endpoint}: ${errorMessage}`);
-            return { ok: false, status: response.status, error: errorMessage || `Request failed with status ${response.status}` };
+            return { ok: false, status: response.status, error: data?.error || `Request failed with status ${response.status}` };
         }
 
         return { ok: true, status: response.status, data };
@@ -103,23 +75,17 @@ function getQueryParam(name) {
     return urlParams.get(name);
 }
 
+
 // --- Authentication & Navigation ---
+// ... (checkAuthStatus - keep as is) ...
 let currentUser = null;
 
 async function checkAuthStatus() {
-    const token = getToken();
-    if (!token) {
-        currentUser = null;
-        updateNavigation();
-        return;
-    }
-
-    const result = await apiCall('/auth/status', 'GET', null, true);
+    const result = await apiCall('/auth/status');
     if (result && result.ok && result.data.logged_in) {
         currentUser = result.data.user;
     } else {
         currentUser = null;
-        removeToken(); // Invalid token, remove it
     }
     updateNavigation();
 }
@@ -185,12 +151,14 @@ function updateNavigation() {
 
 // ... (handleLogout, initLoginPage, initRegisterPage, initIndexPage, initStartupDetailPage - keep these as they are) ...
 async function handleLogout() {
-    // Remove the token from localStorage
-    removeToken();
-    currentUser = null;
-    // Call logout endpoint (though with JWT it's mainly client-side)
-    await apiCall('/logout', 'POST');
-    window.location.href = 'index.html';
+    const result = await apiCall('/logout', 'POST');
+    if (result && result.ok) {
+        currentUser = null;
+        window.location.href = 'index.html';
+    } else {
+        console.error("Logout failed:", result?.error);
+        alert(`Logout failed: ${result?.error || 'Please try again.'}`);
+    }
 }
 
 function initLoginPage() {
@@ -214,12 +182,9 @@ function initLoginPage() {
         submitButton.textContent = originalButtonText;
         submitButton.disabled = false;
         if (result && result.ok) {
-            // Store the JWT token
-            setToken(result.data.access_token);
-            // Get user info after successful login
-            await checkAuthStatus();
-            if (currentUser && currentUser.user_type === 'startup') {
-                 window.location.href = 'my-startup.html';
+            currentUser = result.data.user;
+            if (currentUser.user_type === 'startup') {
+                 window.location.href = 'my-startup.html'; // Or maybe index.html now? Decide default landing.
             } else {
                 window.location.href = 'index.html';
             }

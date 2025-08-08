@@ -1,0 +1,12 @@
+# FastAPI Backend Dependencies
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+aiosqlite==0.21.0
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.20
+pydantic[email]==2.11.7
+
+# Legacy Flask Dependencies (for comparison/testing)
+flask==3.1.1
+flask-cors==6.0.1
